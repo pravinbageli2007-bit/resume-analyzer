@@ -429,5 +429,6 @@ def main():
     st.markdown("<hr>", unsafe_allow_html=True)
     
     # Create columns
-    col1, col2 = st.columns([1],
+    col1, col2 = st.columns([1])
+
 
