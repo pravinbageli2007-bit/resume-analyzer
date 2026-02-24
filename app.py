@@ -1,8 +1,7 @@
 import streamlit as st
 import pdfplumber
 import docx
-from sklearn.feature_extraction.text import TfidfVectorizer
-import numpy as np
+import re
 
 # --- 1. Text Extraction Functions ---
 
@@ -22,7 +21,6 @@ def extract_text_from_docx(file):
 
 def get_text(uploaded_file):
     if uploaded_file is not None:
-        # Check file extension
         if uploaded_file.name.endswith('.pdf'):
             return extract_text_from_pdf(uploaded_file)
         elif uploaded_file.name.endswith('.docx'):
@@ -32,33 +30,53 @@ def get_text(uploaded_file):
             return ""
     return ""
 
-# --- 2. Keyword Analysis Logic ---
+# --- 2. Better Keyword Extraction ---
 
-def extract_keywords(text):
-    # Use TF-IDF to find important words, ignoring common English stop words
-    vectorizer = TfidfVectorizer(stop_words='english')
-    try:
-        tfidf_matrix = vectorizer.fit_transform([text])
-        feature_names = vectorizer.get_feature_names_out()
-        # Get the scores for the words
-        scores = tfidf_matrix.toarray()[0]
-        
-        # Create a dictionary of word: score
-        word_scores = {word: score for word, score in zip(feature_names, scores)}
-        
-        # Sort by score (highest first) and take top 30 keywords
-        sorted_words = sorted(word_scores.items(), key=lambda x: x[1], reverse=True)
-        return [word for word, score in sorted_words[:30]]
-    except ValueError:
-        # Handle case where text is empty or only stop words
-        return []
+def extract_keywords_simple(text, top_n=100):
+    """Extract keywords using simple word frequency (more reliable than TF-IDF)"""
+    
+    # Convert to lowercase
+    text = text.lower()
+    
+    # Remove special characters, keep only letters and spaces
+    text = re.sub(r'[^a-zA-Z\s]', ' ', text)
+    
+    # Split into words
+    words = text.split()
+    
+    # Common stop words to ignore
+    stop_words = {
+        'the', 'a', 'an', 'and', 'or', 'but', 'is', 'are', 'was', 'were',
+        'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did',
+        'will', 'would', 'could', 'should', 'may', 'might', 'must', 'shall',
+        'to', 'of', 'in', 'for', 'on', 'with', 'at', 'by', 'from', 'as',
+        'into', 'through', 'during', 'before', 'after', 'above', 'below',
+        'between', 'under', 'again', 'further', 'then', 'once', 'here',
+        'there', 'when', 'where', 'why', 'how', 'all', 'each', 'few',
+        'more', 'most', 'other', 'some', 'such', 'no', 'nor', 'not',
+        'only', 'own', 'same', 'so', 'than', 'too', 'very', 'can', 'just',
+        'if', 'because', 'until', 'while', 'about', 'against', 'this',
+        'that', 'these', 'those', 'am', 'it', 'its', 'he', 'she', 'they',
+        'we', 'you', 'i', 'me', 'my', 'your', 'his', 'her', 'their', 'our',
+        'what', 'which', 'who', 'whom', 'also', 'get', 'including'
+    }
+    
+    # Filter out stop words and short words
+    keywords = [word for word in words if word not in stop_words and len(word) > 2]
+    
+    # Get unique keywords
+    unique_keywords = list(set(keywords))
+    
+    return unique_keywords[:top_n]
+
+# --- 3. Analysis Logic ---
 
 def analyze_resume(resume_text, jd_text):
-    # Get keywords from both
-    resume_keywords = extract_keywords(resume_text)
-    jd_keywords = extract_keywords(jd_text)
+    # Extract keywords from both
+    resume_keywords = extract_keywords_simple(resume_text)
+    jd_keywords = extract_keywords_simple(jd_text)
     
-    # Clean inputs for comparison (lowercase)
+    # Convert to sets for comparison
     resume_set = set([k.lower() for k in resume_keywords])
     jd_set = set([k.lower() for k in jd_keywords])
     
@@ -66,15 +84,15 @@ def analyze_resume(resume_text, jd_text):
     matched = resume_set.intersection(jd_set)
     missing = jd_set.difference(resume_set)
     
-    # Calculate Score (Simple Percentage)
+    # Calculate Score
     if len(jd_set) > 0:
         score = (len(matched) / len(jd_set)) * 100
     else:
         score = 0
         
-    return matched, missing, score
+    return matched, missing, score, resume_set, jd_set
 
-# --- 3. The Web Interface (Streamlit) ---
+# --- 4. The Web Interface ---
 
 def main():
     st.set_page_config(page_title="Resume Keyword Analyzer", layout="wide")
@@ -82,7 +100,6 @@ def main():
     st.title("📄 Resume Keyword Analyzer")
     st.markdown("Upload your resume and paste the Job Description to see how well you match.")
 
-    # Layout: Two Columns
     col1, col2 = st.columns(2)
 
     with col1:
@@ -96,31 +113,39 @@ def main():
         if uploaded_file is not None:
             st.success("File Uploaded Successfully!")
             
-            # Button to Analyze
             if st.button("Analyze Match"):
                 with st.spinner("Analyzing..."):
-                    # 1. Get Text
                     resume_text = get_text(uploaded_file)
                     
                     if resume_text and jd_text:
-                        # 2. Analyze
-                        matched, missing, score = analyze_resume(resume_text, jd_text)
+                        matched, missing, score, resume_set, jd_set = analyze_resume(resume_text, jd_text)
                         
-                        # 3. Display Results
                         st.divider()
-                        st.subheader(f"Match Score: {score:.1f}%")
+                        st.subheader(f"📊 Match Score: {score:.1f}%")
                         
-                        # Progress Bar for Score
                         st.progress(int(score))
                         
                         c1, c2 = st.columns(2)
+                        
                         with c1:
                             st.success(f"✅ Matched Keywords ({len(matched)})")
-                            st.write(", ".join(matched))
+                            if matched:
+                                st.write(", ".join(sorted(matched)))
+                            else:
+                                st.write("No matches found")
                         
                         with c2:
                             st.error(f"❌ Missing Keywords ({len(missing)})")
-                            st.write(", ".join(missing))
+                            if missing:
+                                st.write(", ".join(sorted(missing)))
+                            else:
+                                st.write("Nothing missing!")
+                                
+                        # Debug info (optional - to see all extracted keywords)
+                        with st.expander("🔍 Debug Info (See all extracted words)"):
+                            st.write(f"JD Keywords ({len(jd_set)}):", sorted(jd_set))
+                            st.write(f"Resume Keywords ({len(resume_set)}):", sorted(resume_set))
+                                
                     else:
                         st.warning("Please enter Job Description text.")
 
