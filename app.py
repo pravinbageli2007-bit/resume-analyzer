@@ -1,19 +1,20 @@
 import streamlit as st
-import hashlib, re, sqlite3
+import hashlib
+import re
+import sqlite3
 from datetime import datetime
 import docx
 
 # -------- SAFE OPTIONAL IMPORTS --------
 try:
     import pdfplumber
-except Exception:
+except ImportError:
     pdfplumber = None
 
 try:
     from fpdf import FPDF
-except Exception:
+except ImportError:
     FPDF = None
-
 # -------- PAGE CONFIG --------
 st.set_page_config("Resume Analyzer Pro", "📊", layout="wide")
 
@@ -198,3 +199,4 @@ c.execute("SELECT match_score,ats_score,created FROM history WHERE username=? OR
 rows=c.fetchall()
 if rows:
     st.table({"Match %":[r[0] for r in rows],"ATS":[r[1] for r in rows],"Date":[r[2] for r in rows]})
+
