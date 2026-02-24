@@ -2,7 +2,7 @@ import streamlit as st
 import pdfplumber
 import docx
 import re
-from fpdf import FPDF
+from fpdf
 import hashlib
 
 # ---------------- PAGE CONFIG ----------------
@@ -195,3 +195,4 @@ else:
         logout()
         st.rerun()
     main_app()
+
