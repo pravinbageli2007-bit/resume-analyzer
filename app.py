@@ -2,8 +2,6 @@ import streamlit as st
 import pdfplumber
 import docx
 import re
-from fpdf import FPDF
-import base64
 
 # --- Custom CSS for Colorful Design ---
 st.markdown("""
@@ -35,6 +33,13 @@ st.markdown("""
         border: 3px solid #ff6b6b !important;
         padding: 15px;
         font-size: 16px;
+    }
+    
+    /* File Uploader */
+    .stFileUploader {
+        background: rgba(255, 255, 255, 0.9);
+        border-radius: 20px;
+        padding: 20px;
     }
     
     /* Buttons */
@@ -107,7 +112,17 @@ st.markdown("""
         border-radius: 5px;
     }
     
-    /* Score Card */
+    /* Custom Card Styling */
+    .match-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 20px;
+        padding: 25px;
+        color: white;
+        text-align: center;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        margin: 10px 0;
+    }
+    
     .score-card {
         background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
         border-radius: 20px;
@@ -117,31 +132,21 @@ st.markdown("""
         box-shadow: 0 10px 30px rgba(0,0,0,0.3);
     }
     
-    /* ATS Card */
-    .ats-card {
-        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-        border-radius: 20px;
-        padding: 25px;
+    /* Keyword Pills */
+    .keyword-pill {
+        display: inline-block;
+        background: linear-gradient(45deg, #4facfe, #00f2fe);
         color: white;
-        text-align: center;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        padding: 8px 16px;
+        border-radius: 20px;
+        margin: 5px;
+        font-size: 14px;
+        font-weight: bold;
     }
     
-    /* Category Card */
-    .category-card {
-        background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
-        border-radius: 15px;
-        padding: 20px;
+    .keyword-pill-missing {
+        background: linear-gradient(45deg, #fa709a, #fee140);
         color: #333;
-        margin: 10px 0;
-    }
-    
-    /* Download Button */
-    .download-btn {
-        background: linear-gradient(135deg, #11998e, #38ef7d) !important;
-        border-radius: 15px !important;
-        padding: 15px 30px !important;
-        font-size: 18px !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -194,8 +199,7 @@ def extract_keywords_simple(text, top_n=100):
         'that', 'these', 'those', 'am', 'it', 'its', 'he', 'she', 'they',
         'we', 'you', 'i', 'me', 'my', 'your', 'his', 'her', 'their', 'our',
         'what', 'which', 'who', 'whom', 'also', 'get', 'including', 'work',
-        'year', 'years', 'experience', 'team', 'like', 'new', 'good', 'great',
-        'working', 'job', 'role', 'position', 'company', 'responsibilities'
+        'year', 'years', 'experience', 'team', 'like', 'new', 'good', 'great'
     }
     
     keywords = [word for word in words if word not in stop_words and len(word) > 2]
@@ -203,187 +207,7 @@ def extract_keywords_simple(text, top_n=100):
     
     return unique_keywords[:top_n]
 
-# --- 3. Skill Categories ---
-
-def categorize_keywords(keywords):
-    categories = {
-        '🖥️ Programming Languages': [
-            'python', 'java', 'javascript', 'c++', 'c#', 'ruby', 'go', 'rust',
-            'php', 'swift', 'kotlin', 'typescript', 'scala', 'perl', 'r'
-        ],
-        '🌐 Web Technologies': [
-            'html', 'css', 'react', 'angular', 'vue', 'node', 'django', 'flask',
-            'spring', 'express', 'nextjs', 'jquery', 'bootstrap', 'tailwind'
-        ],
-        '🗄️ Databases': [
-            'sql', 'mysql', 'postgresql', 'mongodb', 'redis', 'oracle', 'sqlite',
-            'nosql', 'dynamodb', 'cassandra', 'firebase', 'mariadb'
-        ],
-        '☁️ Cloud & DevOps': [
-            'aws', 'azure', 'gcp', 'docker', 'kubernetes', 'jenkins', 'git',
-            'github', 'gitlab', 'ci/cd', 'terraform', 'ansible', 'linux'
-        ],
-        '🤖 AI & ML': [
-            'machine learning', 'deep learning', 'tensorflow', 'pytorch',
-            'nlp', 'computer vision', 'neural network', 'data science',
-            'artificial intelligence', 'pandas', 'numpy', 'scikit'
-        ],
-        '💼 Soft Skills': [
-            'communication', 'leadership', 'teamwork', 'problem solving',
-            'analytical', 'time management', 'project management', 'agile',
-            'scrum', 'collaboration', 'presentation'
-        ],
-        '📊 Data & Analytics': [
-            'excel', 'tableau', 'power bi', 'statistics', 'analytics',
-            'visualization', 'reporting', 'dashboard', 'sql', 'etl'
-        ]
-    }
-    
-    categorized = {}
-    uncategorized = []
-    
-    for keyword in keywords:
-        found = False
-        for category, skills in categories.items():
-            if keyword in skills or any(skill in keyword for skill in skills):
-                if category not in categorized:
-                    categorized[category] = []
-                categorized[category].append(keyword)
-                found = True
-                break
-        if not found:
-            uncategorized.append(keyword)
-    
-    return categorized, uncategorized
-
-# --- 4. ATS Score Checker ---
-
-def check_ats(resume_text, jd_text):
-    score = 0
-    checks = []
-    
-    # Check for required sections
-    sections = ['experience', 'education', 'skills', 'summary', 'objective']
-    resume_lower = resume_text.lower()
-    
-    found_sections = []
-    for section in sections:
-        if section in resume_lower:
-            found_sections.append(section)
-    
-    if len(found_sections) >= 4:
-        score += 25
-        checks.append(("✅ Required Sections", f"Found: {', '.join(found_sections)}"))
-    else:
-        score += (len(found_sections) * 6)
-        missing = set(sections) - set(found_sections)
-        checks.append(("⚠️ Missing Sections", f"Missing: {', '.join(missing)}"))
-    
-    # Check file format
-    checks.append(("✅ File Format", "PDF format is ATS-friendly"))
-    score += 15
-    
-    # Check keyword density
-    resume_keywords = set(extract_keywords_simple(resume_text))
-    jd_keywords = set(extract_keywords_simple(jd_text))
-    match_ratio = len(resume_keywords.intersection(jd_keywords)) / len(jd_keywords) if jd_keywords else 0
-    
-    if match_ratio > 0.5:
-        score += 30
-        checks.append(("✅ Keyword Density", "Good keyword matching"))
-    elif match_ratio > 0.3:
-        score += 20
-        checks.append(("⚠️ Keyword Density", "Could be improved"))
-    else:
-        score += 10
-        checks.append(("❌ Keyword Density", "Low keyword match"))
-    
-    # Check for contact info
-    email_pattern = r'\S+@\S+\.\S+'
-    phone_pattern = r'\d{10,}'
-    
-    has_email = bool(re.search(email_pattern, resume_text))
-    has_phone = bool(re.search(phone_pattern, resume_text))
-    
-    if has_email and has_phone:
-        score += 15
-        checks.append(("✅ Contact Information", "Email and Phone found"))
-    elif has_email:
-        score += 10
-        checks.append(("⚠️ Contact Information", "Only email found"))
-    else:
-        checks.append(("❌ Contact Information", "Missing contact details"))
-    
-    # Check for bullet points
-    bullet_count = resume_text.count('•') + resume_text.count('-') + resume_text.count('*')
-    if bullet_count > 5:
-        score += 15
-        checks.append(("✅ Formatting", "Good use of bullet points"))
-    else:
-        score += 5
-        checks.append(("⚠️ Formatting", "Add more bullet points"))
-    
-    return min(score, 100), checks
-
-# --- 5. Generate PDF Report ---
-
-def generate_pdf_report(matched, missing, score, ats_score, categories, resume_name):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", size=12)
-    
-    # Title
-    pdf.set_font("Arial", 'B', size=24)
-    pdf.set_text_color(102, 126, 234)
-    pdf.cell(200, 20, txt="Resume Analysis Report", ln=True, align='C')
-    pdf.ln(10)
-    
-    # Score Section
-    pdf.set_font("Arial", 'B', size=16)
-    pdf.set_text_color(0, 0, 0)
-    pdf.cell(200, 10, txt=f"Match Score: {score:.1f}%", ln=True, align='C')
-    pdf.cell(200, 10, txt=f"ATS Score: {ats_score:.1f}%", ln=True, align='C')
-    pdf.ln(10)
-    
-    # Matched Keywords
-    pdf.set_font("Arial", 'B', size=14)
-    pdf.set_text_color(17, 153, 142)
-    pdf.cell(200, 10, txt="Matched Keywords:", ln=True)
-    pdf.set_font("Arial", size=12)
-    pdf.set_text_color(0, 0, 0)
-    matched_text = ", ".join(sorted(matched)) if matched else "None"
-    pdf.multi_cell(0, 10, matched_text)
-    pdf.ln(5)
-    
-    # Missing Keywords
-    pdf.set_font("Arial", 'B', size=14)
-    pdf.set_text_color(235, 51, 73)
-    pdf.cell(200, 10, txt="Missing Keywords:", ln=True)
-    pdf.set_font("Arial", size=12)
-    pdf.set_text_color(0, 0, 0)
-    missing_text = ", ".join(sorted(missing)) if missing else "None"
-    pdf.multi_cell(0, 10, missing_text)
-    pdf.ln(5)
-    
-    # Skill Categories
-    if categories:
-        pdf.set_font("Arial", 'B', size=14)
-        pdf.set_text_color(102, 126, 234)
-        pdf.cell(200, 10, txt="Skill Categories:", ln=True)
-        pdf.set_font("Arial", size=12)
-        pdf.set_text_color(0, 0, 0)
-        for category, skills in categories.items():
-            pdf.cell(0, 8, txt=f"• {category}: {', '.join(skills)}", ln=True)
-    
-    # Footer
-    pdf.ln(20)
-    pdf.set_font("Arial", 'I', size=10)
-    pdf.set_text_color(128, 128, 128)
-    pdf.cell(200, 10, txt=f"Generated by Resume Keyword Analyzer | {resume_name}", ln=True, align='C')
-    
-    return pdf.output(dest='S').encode('latin-1')
-
-# --- 6. Analysis Logic ---
+# --- 3. Analysis Logic ---
 
 def analyze_resume(resume_text, jd_text):
     resume_keywords = extract_keywords_simple(resume_text)
@@ -399,16 +223,10 @@ def analyze_resume(resume_text, jd_text):
         score = (len(matched) / len(jd_set)) * 100
     else:
         score = 0
-    
-    # Get skill categories
-    categorized, uncategorized = categorize_keywords(matched)
-    
-    # Get ATS score
-    ats_score, ats_checks = check_ats(resume_text, jd_text)
-    
-    return matched, missing, score, categorized, ats_score, ats_checks, resume_set, jd_set
+        
+    return matched, missing, score, resume_set, jd_set
 
-# --- 7. Main Interface ---
+# --- 4. Main Interface ---
 
 def main():
     st.set_page_config(
@@ -429,6 +247,174 @@ def main():
     st.markdown("<hr>", unsafe_allow_html=True)
     
     # Create columns
-    col1, col2 = st.columns([1])
+    col1, col2 = st.columns([1, 1], gap="large")
+    
+    with col1:
+        st.markdown("""
+        <div style="
+            background: linear-gradient(135deg, #ff9a9e 0%, #fad0c4 100%);
+            padding: 20px;
+            border-radius: 20px;
+            margin-bottom: 20px;
+        ">
+            <h2 style="color: #333; margin: 0;">📋 Job Description</h2>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        jd_text = st.text_area(
+            "Paste the Job Description here:",
+            height=300,
+            placeholder="e.g., We are looking for a Python Developer with SQL, React, and AWS experience..."
+        )
+    
+    with col2:
+        st.markdown("""
+        <div style="
+            background: linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%);
+            padding: 20px;
+            border-radius: 20px;
+            margin-bottom: 20px;
+        ">
+            <h2 style="color: #333; margin: 0;">📄 Upload Resume</h2>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        uploaded_file = st.file_uploader(
+            "Choose your resume (PDF or DOCX)",
+            type=["pdf", "docx"]
+        )
+        
+        if uploaded_file is not None:
+            st.success(f"✅ File uploaded: {uploaded_file.name}")
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # Centered Analyze Button
+    col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
+    with col_btn2:
+        analyze_btn = st.button("🔍 Analyze My Resume")
+    
+    st.markdown("<hr>", unsafe_allow_html=True)
+    
+    # Results Section
+    if analyze_btn:
+        if uploaded_file is None or not jd_text:
+            st.warning("⚠️ Please upload a resume and enter job description!")
+        else:
+            with st.spinner("🔄 Analyzing your resume..."):
+                resume_text = get_text(uploaded_file)
+                
+                if resume_text:
+                    matched, missing, score, resume_set, jd_set = analyze_resume(resume_text, jd_text)
+                    
+                    # Score Display
+                    st.markdown(f"""
+                    <div class="score-card">
+                        <h1 style="font-size: 72px; margin: 0;">{score:.0f}%</h1>
+                        <p style="font-size: 24px; margin: 10px 0;">Match Score</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    
+                    # Progress Bar
+                    st.progress(int(score))
+                    
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    
+                    # Matched and Missing Keywords
+                    result_col1, result_col2 = st.columns(2)
+                    
+                    with result_col1:
+                        st.markdown(f"""
+                        <div style="
+                            background: linear-gradient(135deg, #11998e, #38ef7d);
+                            padding: 25px;
+                            border-radius: 20px;
+                            color: white;
+                            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+                        ">
+                            <h3 style="margin: 0; color: white;">✅ Matched Keywords ({len(matched)})</h3>
+                            <p style="font-size: 14px; opacity: 0.9;">These keywords were found in your resume!</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        if matched:
+                            matched_list = ", ".join(sorted(matched))
+                            st.info(matched_list)
+                        else:
+                            st.write("No matches found 😔")
+                    
+                    with result_col2:
+                        st.markdown(f"""
+                        <div style="
+                            background: linear-gradient(135deg, #eb3349, #f45c43);
+                            padding: 25px;
+                            border-radius: 20px;
+                            color: white;
+                            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+                        ">
+                            <h3 style="margin: 0; color: white;">❌ Missing Keywords ({len(missing)})</h3>
+                            <p style="font-size: 14px; opacity: 0.9;">Add these keywords to improve your chances!</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        if missing:
+                            missing_list = ", ".join(sorted(missing))
+                            st.error(missing_list)
+                        else:
+                            st.success("Perfect match! 🎉")
+                    
+                    # Tips Section
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    
+                    if score < 50:
+                        st.markdown("""
+                        <div style="
+                            background: linear-gradient(135deg, #ff6b6b, #feca57);
+                            padding: 20px;
+                            border-radius: 15px;
+                            text-align: center;
+                        ">
+                            <h3 style="margin: 0;">💡 Tips to Improve</h3>
+                            <p>Add more relevant keywords from the job description to your resume!</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    elif score < 80:
+                        st.markdown("""
+                        <div style="
+                            background: linear-gradient(135deg, #feca57, #48dbfb);
+                            padding: 20px;
+                            border-radius: 15px;
+                            text-align: center;
+                        ">
+                            <h3 style="margin: 0;">👍 Good Job!</h3>
+                            <p>You're close! Add a few more keywords to increase your chances.</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    else:
+                        st.markdown("""
+                        <div style="
+                            background: linear-gradient(135deg, #11998e, #38ef7d);
+                            padding: 20px;
+                            border-radius: 15px;
+                            text-align: center;
+                        ">
+                            <h3 style="margin: 0;">🎉 Excellent Match!</h3>
+                            <p>Your resume matches the job description very well!</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                else:
+                    st.error("❌ Could not extract text from the resume. Try a different file.")
 
+    # Footer
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    st.markdown("""
+    <div style="text-align: center; color: white; opacity: 0.7;">
+        <p>Made with ❤️ | Resume Keyword Analyzer</p>
+    </div>
+    """, unsafe_allow_html=True)
 
+if __name__ == "__main__":
+    main()
